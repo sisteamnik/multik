@@ -1,0 +1,8 @@
+[get /api/v1]
+/users/:id Users.Get
+/users/search Users.Search
+#comment
+
+[/api/v2]
+get /articles/:id Article.Get
+post /articles/new Article.Create
