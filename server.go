@@ -2,6 +2,7 @@ package multik
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -12,6 +13,7 @@ type Server struct {
 	config      Config
 	controllers map[string]interface{}
 	sites       map[string]*Site
+	filters     []Filter
 }
 
 func NewServer(config Config) (*Server, error) {
@@ -30,8 +32,14 @@ func NewServer(config Config) (*Server, error) {
 			return s, err
 		}
 		for _, v := range domainsArr(site.Domains) {
+			log.Println(v)
 			s.sites[v] = site
 		}
+	}
+
+	s.filters = []Filter{
+		RouterFilter,
+		InvokerFilter,
 	}
 	return s, nil
 }
@@ -43,8 +51,18 @@ func (s *Server) Run() {
 }
 
 func (s *Server) Handler(w http.ResponseWriter, r *http.Request) {
-	controller := s.NewController(w, r)
-	controller.Apply()
+	c := s.NewController(w, r)
+	s.filters[0](c, s.filters[1:])
+
+	if c.Result != nil {
+		c.Result.Apply(c.Request, c.Response)
+	} else if c.Response.Status != 0 {
+		c.Response.Out.WriteHeader(c.Response.Status)
+	}
+	// Close the Writer if we can
+	if w, ok := c.Response.Out.(io.Closer); ok {
+		w.Close()
+	}
 }
 
 func (s *Server) BindControllers(is ...interface{}) {
@@ -57,7 +75,7 @@ func (s *Server) BindControllers(is ...interface{}) {
 
 func (s *Server) NewController(w http.ResponseWriter, r *http.Request) *Controller {
 	req := NewRequest(r)
-	resp := &Response{Out: w}
+	resp := NewResponse(w)
 	controller := NewController(req, resp)
 	controller.Server = s
 	return controller

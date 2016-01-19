@@ -2,7 +2,6 @@ package multik
 
 import (
 	"fmt"
-	"net/http"
 	"reflect"
 )
 
@@ -11,18 +10,12 @@ type Controller struct {
 	Response *Response
 	Server   *Server
 
+	Result Result
+
 	Method string
 	Action string
 
 	AppController interface{}
-}
-
-type Request struct {
-	*http.Request
-}
-
-type Response struct {
-	Out http.ResponseWriter
 }
 
 func NewController(req *Request, resp *Response) *Controller {
@@ -30,10 +23,6 @@ func NewController(req *Request, resp *Response) *Controller {
 		Request:  req,
 		Response: resp,
 	}
-}
-
-func NewRequest(r *http.Request) *Request {
-	return &Request{r}
 }
 
 func (c *Controller) GetProcessor(method, action string) {
@@ -51,7 +40,7 @@ func (c *Controller) Apply() {
 	//todo router hange it
 	c.GetProcessor("Users", "Get")
 
-	proc, ok := c.Server.controllersn[c.Method]
+	proc, ok := c.Server.controllers[c.Method]
 	if !ok {
 		fmt.Printf("proccessor not found %s\n", c.Method)
 	}

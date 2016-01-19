@@ -3,6 +3,8 @@ package multik
 import (
 	"errors"
 	"io/ioutil"
+	"log"
+	"net"
 	"strings"
 	"unicode"
 )
@@ -44,6 +46,15 @@ func (r *Router) LoadFromFile(path string, domain string) error {
 	var err error
 	r.routes, err = loadRoutesFromFile(path, domain, true)
 	return err
+}
+
+func (r *Router) CheckRoute(u string) (Route, error) {
+	for _, v := range r.routes {
+		if checkRoute(v.path, u) {
+			return v, nil
+		}
+	}
+	return Route{}, errors.New(ErrUncknownRoute)
 }
 
 func loadRoutesFromFile(path string, domains string, overrwrite bool) ([]Route,
@@ -173,4 +184,80 @@ func domainsArr(in string) []string {
 		return !unicode.IsLetter(c) && !unicode.IsNumber(c) && c != '.' &&
 			c != '*' && c != '-'
 	})
+}
+
+func checkRoute(route, rec string) bool {
+	splitRoute := strings.Split(route, "/")
+	splitRec := strings.Split(rec, "/")
+	if len(splitRec) != len(splitRoute) {
+		return false
+	}
+	for i, v := range splitRoute {
+		if len(v) != 0 && (v[:1] == ":" || v[:1] == "*") {
+			continue
+		}
+		if splitRoute[i] != splitRec[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func checkHost(name, host string) bool {
+	host, _, _ = net.SplitHostPort(host)
+	if host == "" {
+		return false
+	}
+	sh, sn := strings.Split(host, "."), strings.Split(name, ".")
+	if len(sh) != len(sn) {
+		return false
+	}
+	for i, v := range sn {
+		if len(v) != 0 && v[:1] == "*" {
+			continue
+		}
+		if sn[i] != sh[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func RouterFilter(c *Controller, fc []Filter) {
+	var site *Site
+
+	for sitename := range c.Server.sites {
+		if checkHost(sitename, c.Request.Host) {
+			site = c.Server.sites[sitename]
+			break
+		}
+	}
+
+	//TODO is site == nil - error domain not allowed
+	if site == nil {
+		//panic("not found")
+		//fc[0](c, fc[1:])
+		return
+	}
+
+	r, err := site.router.CheckRoute(c.Request.RequestURI)
+	if err != nil {
+		log.Println(err)
+	}
+	c.Method, c.Action = splitAction(r.action)
+	//todo not found
+	if c.Method == "" {
+		return
+	}
+
+	log.Println(c.Action, c.Method)
+	fc[0](c, fc[1:])
+}
+
+func splitAction(a string) (string, string) {
+	arr := strings.Split(a, ".")
+	if len(arr) != 2 {
+		return "", ""
+	}
+	return arr[0], arr[1]
 }
